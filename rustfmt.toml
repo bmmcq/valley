@@ -1,0 +1,7 @@
+edition = "2021"
+unstable_features = true
+chain_width = 64
+max_width = 128
+use_small_heuristics = "Max"
+fn_args_layout = "Compressed"
+group_imports = "StdExternalCrate"
