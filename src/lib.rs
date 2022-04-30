@@ -13,6 +13,12 @@ pub struct Message {
     payload: Bytes,
 }
 
+impl Message {
+    pub fn new(source: ServerId, payload: Bytes) -> Self {
+        Message { source, payload }
+    }
+}
+
 pub struct RemoteSender {
     server_id: ServerId,
     sends: HashMap<ServerId, Sender<Message>>,
