@@ -1,16 +1,12 @@
 use std::collections::HashMap;
 use std::io::IoSlice;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::BytesMut;
-use futures::future::err;
 use log::error;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::{oneshot, Mutex};
 
 use crate::{ChannelId, Message, RemoteReceiver, RemoteSender, ServerId, VError};
 
@@ -21,57 +17,6 @@ pub trait NameService {
     async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, VError>;
 }
 
-enum MaybeFuture<T> {
-    Ready(T),
-    Waiting(oneshot::Sender<T>),
-}
-
-#[derive(Clone)]
-struct WaitingAccepted<T> {
-    waiting: Arc<Mutex<HashMap<(ServerId, ChannelId), MaybeFuture<T>>>>,
-}
-
-impl<T> WaitingAccepted<T> {
-    fn new() -> Self {
-        WaitingAccepted { waiting: Arc::new(Mutex::new(HashMap::new())) }
-    }
-
-    async fn get_or_wait(&self, ch_id: ChannelId, server_id: ServerId) -> Result<T, VError> {
-        let mut waiting = self.waiting.lock().await;
-        if let Some(ac) = waiting.remove(&(server_id, ch_id)) {
-            match ac {
-                MaybeFuture::Ready(a) => Ok(a),
-                MaybeFuture::Waiting(_) => {
-                    panic!("some other waiting on it;")
-                }
-            }
-        } else {
-            let (tx, rx) = oneshot::channel();
-            waiting.insert((server_id, ch_id), MaybeFuture::Waiting(tx));
-            std::mem::drop(waiting);
-            Ok(rx.await.unwrap())
-        }
-    }
-
-    async fn notify(&self, ch_id: ChannelId, server_id: ServerId, res: T) -> Result<(), VError> {
-        let mut waiting = self.waiting.lock().await;
-        if let Some(ac) = waiting.remove(&(server_id, ch_id)) {
-            match ac {
-                MaybeFuture::Ready(_) => {
-                    panic!("no waiting...")
-                }
-                MaybeFuture::Waiting(notify) => {
-                    notify
-                        .send(res)
-                        .map_err(|_| VError::SendError("notify fail".to_owned()))?;
-                }
-            }
-        } else {
-            waiting.insert((server_id, ch_id), MaybeFuture::Ready(res));
-        }
-        Ok(())
-    }
-}
 
 #[async_trait]
 pub trait ConnectionBuilder {
@@ -167,23 +112,25 @@ where
 {
     let mut buf = BytesMut::with_capacity(1 << 16);
     tokio::spawn(async move {
-        'out: loop {
+        loop {
             match reader.read_u64().await {
                 Ok(len) => {
                     if len > 0 {
-                        buf.reserve(len as usize);
-                        while buf.len() < len as usize {
-                            match reader.read_buf(&mut buf).await {
-                                Ok(_r) => {}
-                                Err(err) => {
-                                    error!("fail to read message from {}: {}", source, err);
-                                    break 'out;
-                                }
+                        let size = len as usize;
+                        buf.reserve(size);
+                        buf.resize(size, 0);
+                        let mut sp_buf = buf.split();
+                        let bytes = sp_buf.as_mut();
+                        match reader.read_exact(&mut bytes[..]).await {
+                            Ok(r) => {
+                                assert_eq!(r, size, "read_exact expect read {} actually read {};", size, r);
+                            },
+                            Err(e) => {
+                                error!("fail to read message from {}: {}", source, e);
+                                break;
                             }
                         }
-
-                        let bytes = buf.split_to(len as usize);
-                        if let Err(e) = input.send(Message::new(source, bytes.freeze())).await {
+                        if let Err(e) = input.send(Message::new(source, sp_buf.freeze())).await {
                             error!("fail to delivery message from {} : {}", source, e);
                         }
                     } else {
@@ -199,4 +146,4 @@ where
     });
 }
 
-mod tcp;
+pub mod tcp;

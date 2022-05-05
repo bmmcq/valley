@@ -6,7 +6,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 use crate::errors::VError;
 
 pub type ServerId = u32;
-pub type ChannelId = u64;
+pub type ChannelId = u32;
 
 pub struct Message {
     source: ServerId,
@@ -16,6 +16,14 @@ pub struct Message {
 impl Message {
     pub fn new(source: ServerId, payload: Bytes) -> Self {
         Message { source, payload }
+    }
+
+    pub fn get_source(&self) -> ServerId {
+        self.source
+    }
+
+    pub fn get_payload(&self) -> &[u8] {
+        self.payload.as_ref()
     }
 }
 
@@ -48,6 +56,10 @@ pub struct RemoteReceiver {
 impl RemoteReceiver {
     pub fn new(server_id: ServerId, receiver: Receiver<Message>) -> Self {
         Self { server_id, receiver }
+    }
+
+    pub fn get_server_id(&self) -> ServerId {
+        self.server_id
     }
 
     pub async fn recv(&mut self) -> Option<Message> {
