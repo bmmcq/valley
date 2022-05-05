@@ -1,14 +1,16 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+
+use async_trait::async_trait;
 use bytes::{Buf, BufMut};
 use log::{error, info};
-use async_trait::async_trait;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{Mutex, oneshot};
-use crate::{ChannelId, ServerId, VError};
+use tokio::sync::{oneshot, Mutex};
+
 use crate::server::ConnectionBuilder;
+use crate::{ChannelId, ServerId, VError};
 
 enum MaybeFuture<T> {
     Ready(T),
@@ -68,7 +70,7 @@ impl<T> Clone for WaitingAccepted<T> {
 }
 
 pub struct TcpConnBuilder {
-    incoming : WaitingAccepted<TcpStream>
+    incoming: WaitingAccepted<TcpStream>,
 }
 
 impl TcpConnBuilder {
@@ -93,10 +95,10 @@ impl ConnectionBuilder for TcpConnBuilder {
                         let accepted = incoming.clone();
                         info!("accept a connection from {}", addr);
                         add_connection(conn, accepted);
-                    },
+                    }
                     Err(e) => {
                         error!("call 'accept()' fail: {}", e);
-                        break
+                        break;
                     }
                 }
             }

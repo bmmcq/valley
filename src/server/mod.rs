@@ -17,7 +17,6 @@ pub trait NameService {
     async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, VError>;
 }
 
-
 #[async_trait]
 pub trait ConnectionBuilder {
     type Reader: AsyncRead + Send + Unpin + 'static;
@@ -124,7 +123,7 @@ where
                         match reader.read_exact(&mut bytes[..]).await {
                             Ok(r) => {
                                 assert_eq!(r, size, "read_exact expect read {} actually read {};", size, r);
-                            },
+                            }
                             Err(e) => {
                                 error!("fail to read message from {}: {}", source, e);
                                 break;
