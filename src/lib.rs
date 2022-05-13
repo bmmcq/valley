@@ -27,24 +27,33 @@ impl Message {
     }
 }
 
-pub struct RemoteSender {
+pub struct RemoteSender<T> {
     server_id: ServerId,
-    sends: HashMap<ServerId, Sender<Message>>,
+    sends: HashMap<ServerId, Sender<Option<T>>>,
 }
 
-impl RemoteSender {
-    pub fn new(server_id: ServerId, sends: HashMap<ServerId, Sender<Message>>) -> Self {
+impl<T> RemoteSender<T> {
+    pub fn new(server_id: ServerId, sends: HashMap<ServerId, Sender<Option<T>>>) -> Self {
         Self { server_id, sends }
     }
 
-    pub async fn send(&self, target: ServerId, data: Bytes) -> Result<(), VError> {
-        if let Some(send) = self.sends.get(&target) {
-            let msg = Message { source: self.server_id, payload: data };
+    pub fn get_server_id(&self) -> ServerId {
+        self.server_id
+    }
 
-            Ok(send.send(msg).await?)
+    pub async fn send(&self, target: ServerId, data: T) -> Result<(), VError> {
+        if let Some(send) = self.sends.get(&target) {
+            Ok(send.send(Some(data)).await?)
         } else {
             Err(VError::ServerNotFound(target))
         }
+    }
+
+    pub async fn flush(&self) -> Result<(), VError> {
+        for se in self.sends.values() {
+            se.send(None).await?;
+        }
+        Ok(())
     }
 }
 
@@ -68,9 +77,12 @@ impl RemoteReceiver {
 }
 
 /// Create a communication channel, with which we can send data to remote servers, and receive data from them;
-pub async fn allocate(_ch_id: ChannelId, _servers: &[ServerId]) -> Result<(RemoteSender, RemoteReceiver), VError> {
+pub async fn allocate<T>(_ch_id: ChannelId, _servers: &[ServerId]) -> Result<(RemoteSender<T>, RemoteReceiver), VError> {
     todo!()
 }
 
+pub mod codec;
+pub mod connection;
 pub mod errors;
+pub mod name_service;
 pub mod server;

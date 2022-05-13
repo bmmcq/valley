@@ -9,7 +9,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, Mutex};
 
-use crate::server::ConnectionBuilder;
+use crate::connection::ConnectionBuilder;
 use crate::{ChannelId, ServerId, VError};
 
 enum MaybeFuture<T> {
