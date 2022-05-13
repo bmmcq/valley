@@ -22,8 +22,8 @@ impl Message {
         self.source
     }
 
-    pub fn get_payload(&self) -> &[u8] {
-        self.payload.as_ref()
+    pub fn get_payload(&mut self) -> &mut Bytes {
+        &mut self.payload
     }
 }
 
@@ -54,6 +54,12 @@ impl<T> RemoteSender<T> {
             se.send(None).await?;
         }
         Ok(())
+    }
+
+    pub async fn close(&self)  {
+        for se in self.sends.values() {
+            se.closed().await;
+        }
     }
 }
 

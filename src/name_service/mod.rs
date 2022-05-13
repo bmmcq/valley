@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
@@ -14,7 +15,7 @@ pub trait NameService {
 }
 
 pub struct StaticNameService {
-    naming_map: Arc<RwLock<HashMap<ServerId, SocketAddr>>>
+    naming_map: Arc<RwLock<HashMap<ServerId, SocketAddr>>>,
 }
 
 impl StaticNameService {

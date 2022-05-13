@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::{Buf, BufMut};
-use log::{error, info};
+use log::{debug, error, info};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, Mutex};
@@ -38,6 +38,7 @@ impl<T> WaitingAccepted<T> {
         } else {
             let (tx, rx) = oneshot::channel();
             waiting.insert((server_id, ch_id), MaybeFuture::Waiting(tx));
+            debug!("waiting connection of channel {} from {}", ch_id, server_id);
             std::mem::drop(waiting);
             Ok(rx.await.unwrap())
         }
@@ -106,18 +107,18 @@ impl ConnectionBuilder for TcpConnBuilder {
         Ok(bind_addr)
     }
 
-    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, VError> {
+    async fn get_writer_to(&self, ch_id: ChannelId, source: ServerId, addr: SocketAddr) -> Result<Self::Writer, VError> {
         let mut buf = [0u8; 8];
         let mut write = &mut buf[..];
-        write.put_u32(target);
+        write.put_u32(source);
         write.put_u32(ch_id);
         let mut conn = TcpStream::connect(addr).await?;
         conn.write_all(&buf[..]).await?;
         Ok(conn)
     }
 
-    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, VError> {
-        let conn = self.incoming.get_or_wait(ch_id, source).await?;
+    async fn get_reader_from(&self, ch_id: ChannelId, target: ServerId) -> Result<Self::Reader, VError> {
+        let conn = self.incoming.get_or_wait(ch_id, target).await?;
         Ok(conn)
     }
 }

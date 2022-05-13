@@ -1,7 +1,8 @@
 use std::net::SocketAddr;
 
-use tokio::io::{AsyncRead, AsyncWrite};
 use async_trait::async_trait;
+use tokio::io::{AsyncRead, AsyncWrite};
+
 use crate::{ChannelId, ServerId, VError};
 
 #[async_trait]

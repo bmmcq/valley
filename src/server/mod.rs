@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 
 use bytes::{Buf, BufMut, BytesMut};
-use log::{error, warn};
+use log::{debug, error, info, warn};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::codec::Encode;
+use crate::connection::tcp::TcpConnBuilder;
 use crate::connection::ConnectionBuilder;
 use crate::name_service::NameService;
 use crate::{ChannelId, Message, RemoteReceiver, RemoteSender, ServerId, VError};
@@ -24,6 +25,10 @@ impl<N, B> ValleyServer<N, B> {
     }
 }
 
+pub fn new_tcp_server<N>(server_id: ServerId, addr: SocketAddr, name_service: N) -> ValleyServer<N, TcpConnBuilder> {
+    ValleyServer::new(server_id, addr, name_service, TcpConnBuilder::new())
+}
+
 impl<N, B> ValleyServer<N, B>
 where
     N: NameService,
@@ -32,6 +37,7 @@ where
     pub async fn start(&mut self) -> Result<(), VError> {
         let bind_addr = self.conn_builder.bind(self.addr).await?;
         self.name_service.register(self.server_id, bind_addr).await?;
+        info!("server {} started at {} ;", self.server_id, bind_addr);
         Ok(())
     }
 
@@ -50,7 +56,8 @@ where
 
         let mut sends = HashMap::with_capacity(servers.len());
         for (server_id, addr) in addrs {
-            let conn = self.conn_builder.get_writer_to(ch_id, server_id, addr).await?;
+            debug!("try to connect server {} at  {} ...", server_id, addr);
+            let conn = self.conn_builder.get_writer_to(ch_id, self.server_id, addr).await?;
             let (tx, rx) = tokio::sync::mpsc::channel(1024);
             start_send(server_id, rx, conn);
             sends.insert(server_id, tx);
@@ -75,6 +82,7 @@ where
 {
     let mut slab = BytesMut::with_capacity(1 << 32);
     tokio::spawn(async move {
+        debug!("start to send message to server {}", target);
         while let Some(mut next) = output.recv().await {
             if let Some(msg) = next.take() {
                 let start = slab.len();
@@ -84,14 +92,16 @@ where
                     break;
                 }
                 let end = slab.len();
-                if end - start > 8 {
+                let p_size = (end - start - 8) as u64;
+                if p_size > 0 {
                     let mut reset = &mut slab.as_mut()[start..];
-                    reset.put_u64((end - start) as u64);
+                    reset.put_u64(p_size);
                 } else {
                     warn!("write empty message;")
                 }
 
                 if end >= MAX_BUF_SIZE {
+                    //debug!("try to flush ...");
                     let mut buf = slab.split().freeze();
                     if let Err(err) = writer.write_all_buf(&mut buf).await {
                         error!("fail to send message to {}: {}", target, err);
@@ -116,6 +126,7 @@ where
                 }
             }
         }
+        debug!("finish send message to server {}", target);
     });
 }
 
@@ -131,14 +142,16 @@ where
             match reader.read_buf(&mut buf).await {
                 Ok(len) => {
                     if len > 0 {
+                        debug!("read {} bytes from {}", len, source);
                         parse_load(source, &mut unfinished, &mut buf, &input).await;
                     } else {
-                        warn!("no bytes read;")
+                        error!("no bytes read, maybe EOF;");
+                        break;
                     }
                 }
                 Err(e) => {
-                    error!("fail to read from {}: {}", source , e);
-                    break
+                    error!("fail to read from {}: {}", source, e);
+                    break;
                 }
             }
         }
@@ -148,18 +161,18 @@ where
 #[inline]
 async fn parse_load(source: ServerId, unfinished: &mut usize, buf: &mut BytesMut, sink: &Sender<Message>) {
     while *unfinished < buf.len() {
-        if *unfinished > 0  {
+        if *unfinished > 0 {
             let payload = buf.split_to(*unfinished);
             *unfinished = 0;
             if let Err(e) = sink.send(Message::new(source, payload.freeze())).await {
                 error!("fail to delivery message from {} : {}", source, e);
             }
         } else {
-            if buf.len() >= 8  {
+            if buf.len() >= 8 {
                 let new_size = buf.get_u64() as usize;
                 if buf.len() >= new_size {
-                    let  payload = buf.split_to(new_size);
-                    if let Err(e)  = sink.send(Message::new(source, payload.freeze())).await {
+                    let payload = buf.split_to(new_size);
+                    if let Err(e) = sink.send(Message::new(source, payload.freeze())).await {
                         error!("fail to delivery message from {}: {}", source, e);
                     }
                 } else {
