@@ -78,7 +78,7 @@ where
 const MAX_BUF_SIZE: usize = 1448;
 
 struct WriteBufSlab {
-    slab: BytesMut
+    slab: BytesMut,
 }
 
 impl WriteBufSlab {
@@ -133,7 +133,7 @@ where
         debug!("channel[{}]: start to send message to server {};", ch_id, target);
         while let Some(mut next) = output.recv().await {
             if let Some(msg) = next.take() {
-                if let Err(err) =  slab.write(msg) {
+                if let Err(err) = slab.write(msg) {
                     error!("channel[{}]: fail to encode message: {};", ch_id, err);
                 }
 
@@ -158,7 +158,10 @@ where
 }
 
 #[inline]
-async fn send_flush<W>(mut buf: Bytes, writer: &mut W) -> std::io::Result<()> where W: AsyncWrite + Send + Unpin + 'static {
+async fn send_flush<W>(mut buf: Bytes, writer: &mut W) -> std::io::Result<()>
+where
+    W: AsyncWrite + Send + Unpin + 'static,
+{
     writer.write_all_buf(&mut buf).await?;
     writer.flush().await?;
     Ok(())
@@ -182,7 +185,7 @@ impl ReadBufSlab {
 
     #[inline]
     fn extract(&mut self) -> Option<Bytes> {
-        if self.waiting > 0  {
+        if self.waiting > 0 {
             if self.slab.len() >= self.waiting {
                 let bytes = self.slab.split_to(self.waiting).freeze();
                 self.waiting = 0;
@@ -211,7 +214,7 @@ where
 {
     let mut slab = ReadBufSlab::new();
     tokio::spawn(async move {
-        let mut cnt = 0 ;
+        let mut cnt = 0;
         loop {
             match reader.read_buf(slab.get_read_buf()).await {
                 Ok(len) => {
@@ -238,5 +241,3 @@ where
         debug!("channel[{}]: finish read all and exit, total read {} messages;", ch_id, cnt);
     });
 }
-
-
