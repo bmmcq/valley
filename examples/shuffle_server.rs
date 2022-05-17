@@ -21,17 +21,18 @@ pub struct Configs {
 }
 
 struct TestMessage {
+    user_id: u32,
     create_time: u128,
     content: Vec<u8>,
 }
 
 impl TestMessage {
-    pub fn new(size: usize) -> Self {
+    pub fn new(user_id: u32, size: usize) -> Self {
         let create_time = SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_micros();
-        Self { create_time, content: vec![9; size] }
+        Self { user_id, create_time, content: vec![9; size] }
     }
 
     pub fn get_dur(&self) -> u128 {
@@ -45,6 +46,7 @@ impl TestMessage {
 
 impl Encode for TestMessage {
     fn write_to<W: BufMut>(&self, writer: &mut W) -> std::io::Result<()> {
+        writer.put_u32(self.user_id);
         writer.put_u128(self.create_time);
         writer.put_u32(self.content.len() as u32);
         writer.put_slice(self.content.as_slice());
@@ -54,11 +56,12 @@ impl Encode for TestMessage {
 
 impl Decode for TestMessage {
     fn read_from<R: Buf>(reader: &mut R) -> std::io::Result<Self> {
+        let user_id = reader.get_u32();
         let create_time = reader.get_u128();
         let size = reader.get_u32() as usize;
         let mut content = vec![0u8; size];
         reader.copy_to_slice(&mut content[0..]);
-        Ok(Self { create_time, content })
+        Ok(Self { user_id, create_time, content })
     }
 }
 
@@ -92,17 +95,24 @@ async fn main() {
         let mut i = 0;
         while let Some(mut next) = pull.recv().await {
             let msg = TestMessage::read_from(next.get_payload()).unwrap();
-            println!("{} get message from {}, use {} micros", i, next.get_source(), msg.get_dur());
+            println!("{}. get message from user {} at server {}, use {} micros;", i, msg.user_id, next.get_source(), msg.get_dur());
             i += 1;
         }
     });
 
-    for _ in 0..1000 {
-        for id in peers.iter() {
-            push.send(*id, TestMessage::new(64)).await.unwrap();
-        }
+    for user_id in 0..2 {
+        let push = push.clone();
+        let peers = peers.clone();
+        tokio::spawn(async move {
+            for _ in 0..1000 {
+                for id in peers.iter() {
+                    push.send(*id, TestMessage::new(user_id, 64)).await.unwrap();
+                }
+            }
+            push.flush().await.unwrap();
+        });
     }
-    push.flush().await.unwrap();
+
     std::mem::drop(push);
     recv_fut.await.unwrap();
 }
