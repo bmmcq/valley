@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
 
@@ -77,9 +77,7 @@ async fn main() {
         } else {
             port = host_addr.port();
         }
-        ns.register(i as u32, host_addr)
-            .await
-            .unwrap();
+        ns.register(i as u32, host_addr).await.unwrap();
     }
     let addr = SocketAddr::new("0.0.0.0".parse().unwrap(), port);
 
@@ -90,7 +88,7 @@ async fn main() {
     let (push, mut pull) = server.get_connections(1, &peers).await.unwrap();
 
     println!("connected;");
-    tokio::spawn(async move {
+    let recv_fut = tokio::spawn(async move {
         let mut i = 0;
         while let Some(mut next) = pull.recv().await {
             let msg = TestMessage::read_from(next.get_payload()).unwrap();
@@ -99,16 +97,12 @@ async fn main() {
         }
     });
 
-    for _ in 0..1_000 {
-        let mut send_all = vec![];
+    for _ in 0..1000 {
         for id in peers.iter() {
-            send_all.push(push.send(*id, TestMessage::new(64)));
-        }
-
-        for x in futures::future::join_all(send_all).await {
-            x.unwrap();
+            push.send(*id, TestMessage::new(64)).await.unwrap();
         }
     }
     push.flush().await.unwrap();
-    push.close().await;
+    std::mem::drop(push);
+    recv_fut.await.unwrap();
 }

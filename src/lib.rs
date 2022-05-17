@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use std::collections::HashMap;
 
 use bytes::Bytes;
@@ -55,11 +58,15 @@ impl<T> RemoteSender<T> {
         }
         Ok(())
     }
+}
 
-    pub async fn close(&self)  {
-        for se in self.sends.values() {
-            se.closed().await;
+impl<T> Clone for RemoteSender<T> {
+    fn clone(&self) -> Self {
+        let mut sends_copy = HashMap::with_capacity(self.sends.len());
+        for (k, v) in self.sends.iter() {
+            sends_copy.insert(*k, v.clone());
         }
+        Self { server_id: self.server_id, sends: sends_copy }
     }
 }
 
