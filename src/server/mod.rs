@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::codec::Encode;
 use crate::connection::tcp::TcpConnBuilder;
@@ -132,17 +132,17 @@ where
                     match output.try_recv() {
                         Ok(Some(msg)) => {
                             slab.write(msg);
-                        },
+                        }
                         Ok(None) => {
                             if let Err(err) = send_flush(&mut slab, &mut writer).await {
                                 error_occurred = true;
                                 error!("channel[{}]: fail to send or flush: {};", ch_id, err);
                                 break 'main;
                             }
-                        },
+                        }
                         Err(TryRecvError::Empty) => {
                             break 'sub;
-                        },
+                        }
                         Err(TryRecvError::Disconnected) => {
                             break 'main;
                         }
@@ -152,7 +152,7 @@ where
             if let Err(err) = send_flush(&mut slab, &mut writer).await {
                 error_occurred = true;
                 error!("channel[{}]: fail to send or flush: {};", ch_id, err);
-                break ;
+                break;
             }
         }
 

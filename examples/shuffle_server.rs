@@ -94,7 +94,13 @@ async fn main() {
         let mut i = 0;
         while let Some(mut next) = pull.recv().await {
             let msg = TestMessage::read_from(next.get_payload()).unwrap();
-            println!("{}. get message from user {} at server {}, use {} micros;", i, msg.user_id, next.get_source(), msg.get_dur());
+            println!(
+                "{}. get message from user {} at server {}, use {} micros;",
+                i,
+                msg.user_id,
+                next.get_source(),
+                msg.get_dur()
+            );
             i += 1;
         }
     });
