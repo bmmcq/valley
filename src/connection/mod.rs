@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use bytes::Buf;
+use bytes::{Buf, BufMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::sync::{oneshot, Mutex};
 
@@ -103,6 +103,15 @@ where
             }
         }
     });
+}
+
+#[inline]
+fn get_head(ch_id: ChannelId, server_id: ServerId) -> [u8; 8] {
+    let mut buf = [0u8; 8];
+    let mut write = &mut buf[..];
+    write.put_u32(server_id);
+    write.put_u32(ch_id);
+    buf
 }
 
 pub mod quic;

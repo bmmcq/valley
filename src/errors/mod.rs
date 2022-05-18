@@ -11,6 +11,9 @@ pub enum VError {
     ServerNotStart(ServerId),
     SendError(String),
     StdIO(std::io::Error),
+    WriteError(quinn::WriteError),
+    ConnectError(quinn::ConnectError),
+    ConnectionError(quinn::ConnectionError),
 }
 
 impl Display for VError {
@@ -20,6 +23,9 @@ impl Display for VError {
             VError::ServerNotStart(id) => write!(f, "server: {} not start", id),
             VError::SendError(msg) => write!(f, "send data error : {}", msg),
             VError::StdIO(err) => write!(f, "IO error: {}", err),
+            VError::WriteError(err) => write!(f, "quic write error {}", err),
+            VError::ConnectError(err) => write!(f, "quic connect error {}", err),
+            VError::ConnectionError(err) => write!(f, "quic connection error {}", err),
         }
     }
 }
@@ -35,5 +41,23 @@ impl From<std::io::Error> for VError {
 impl<T> From<SendError<T>> for VError {
     fn from(e: SendError<T>) -> Self {
         VError::SendError(format!("{}", e))
+    }
+}
+
+impl From<quinn::WriteError> for VError {
+    fn from(e: quinn::WriteError) -> Self {
+        VError::WriteError(e)
+    }
+}
+
+impl From<quinn::ConnectError> for VError {
+    fn from(e: quinn::ConnectError) -> Self {
+        VError::ConnectError(e)
+    }
+}
+
+impl From<quinn::ConnectionError> for VError {
+    fn from(e: quinn::ConnectionError) -> Self {
+        VError::ConnectionError(e)
     }
 }

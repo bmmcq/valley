@@ -1,11 +1,10 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use bytes::BufMut;
 use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 
-use crate::connection::{add_connection, ConnectionBuilder, WaitingAccepted};
+use crate::connection::{add_connection, get_head, ConnectionBuilder, WaitingAccepted};
 use crate::{ChannelId, ServerId, VError};
 
 pub struct TcpConnBuilder {
@@ -47,13 +46,10 @@ impl ConnectionBuilder for TcpConnBuilder {
     }
 
     async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, VError> {
-        let mut buf = [0u8; 8];
-        let mut write = &mut buf[..];
-        write.put_u32(self.server_id);
-        write.put_u32(ch_id);
         let mut conn = TcpStream::connect(addr).await?;
         debug!("channel[{}]: create a TCP connection from server {} to {}({});", ch_id, self.server_id, target, addr);
-        conn.write_all(&buf[..]).await?;
+        let head = get_head(ch_id, self.server_id);
+        conn.write_all(&head[..]).await?;
         Ok(conn)
     }
 

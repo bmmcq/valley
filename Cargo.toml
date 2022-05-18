@@ -12,6 +12,7 @@ tokio = { version = "1", features = ["full"] }
 async-trait = "0.1"
 quinn = "0.8"
 rustls = { version = "0.20.3", default-features = false, features = ["quic", "dangerous_configuration"] }
+rcgen = "0.9"
 
 [dev-dependencies]
 structopt = "0.3"

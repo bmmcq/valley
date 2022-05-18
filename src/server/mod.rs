@@ -11,6 +11,7 @@ use crate::connection::tcp::TcpConnBuilder;
 use crate::connection::ConnectionBuilder;
 use crate::name_service::NameService;
 use crate::{ChannelId, Message, RemoteReceiver, RemoteSender, ServerId, VError};
+use crate::connection::quic::QUIConnBuilder;
 
 pub struct ValleyServer<N, B> {
     server_id: ServerId,
@@ -27,6 +28,10 @@ impl<N, B> ValleyServer<N, B> {
 
 pub fn new_tcp_server<N>(server_id: ServerId, addr: SocketAddr, name_service: N) -> ValleyServer<N, TcpConnBuilder> {
     ValleyServer::new(server_id, addr, name_service, TcpConnBuilder::new(server_id))
+}
+
+pub fn new_quic_server<N>(server_id: ServerId, addr: SocketAddr, name_service: N) -> ValleyServer<N, QUIConnBuilder> {
+    ValleyServer::new(server_id, addr, name_service, QUIConnBuilder::new(server_id))
 }
 
 impl<N, B> ValleyServer<N, B>
