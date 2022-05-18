@@ -7,11 +7,11 @@ use tokio::sync::mpsc::error::TryRecvError;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::codec::Encode;
+use crate::connection::quic::QUIConnBuilder;
 use crate::connection::tcp::TcpConnBuilder;
 use crate::connection::ConnectionBuilder;
 use crate::name_service::NameService;
 use crate::{ChannelId, Message, RemoteReceiver, RemoteSender, ServerId, VError};
-use crate::connection::quic::QUIConnBuilder;
 
 pub struct ValleyServer<N, B> {
     server_id: ServerId,
