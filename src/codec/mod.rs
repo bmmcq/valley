@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut};
 
 pub trait Encode {
-    fn write_to<W: BufMut>(&self, writer: &mut W) -> std::io::Result<()>;
+    fn write_to<W: BufMut>(&self, writer: &mut W);
 }
 
 pub trait Decode: Sized {

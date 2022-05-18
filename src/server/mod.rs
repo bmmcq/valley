@@ -4,6 +4,7 @@ use std::net::SocketAddr;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::error::TryRecvError;
 
 use crate::codec::Encode;
 use crate::connection::tcp::TcpConnBuilder;
@@ -40,7 +41,7 @@ where
         Ok(())
     }
 
-    pub async fn get_connections<T: Encode + Send + 'static>(
+    pub async fn get_bi_channel<T: Encode + Send + 'static>(
         &self, ch_id: ChannelId, servers: &[ServerId],
     ) -> Result<(RemoteSender<T>, RemoteReceiver), VError> {
         let mut addrs = Vec::with_capacity(servers.len());
@@ -75,8 +76,6 @@ where
     }
 }
 
-const MAX_BUF_SIZE: usize = 1448;
-
 struct WriteBufSlab {
     slab: BytesMut,
 }
@@ -87,15 +86,10 @@ impl WriteBufSlab {
     }
 
     #[inline]
-    fn write<T: Encode>(&mut self, entry: T) -> std::io::Result<usize> {
+    fn write<T: Encode>(&mut self, entry: T) -> usize {
         let start_offset = self.slab.len();
         self.slab.put_u64(0);
-        if let Err(e) = entry.write_to(&mut self.slab) {
-            unsafe {
-                self.slab.set_len(start_offset);
-            }
-            return Err(e);
-        }
+        entry.write_to(&mut self.slab);
         let end_offset = self.slab.len();
         let payload_len = end_offset - start_offset - 8;
         if payload_len > 0 {
@@ -104,7 +98,7 @@ impl WriteBufSlab {
         } else {
             unsafe { self.slab.set_len(start_offset) }
         }
-        Ok(payload_len)
+        payload_len
     }
 
     #[inline]
@@ -113,13 +107,12 @@ impl WriteBufSlab {
     }
 
     #[inline]
-    fn take_buf(&mut self, size: usize) -> Bytes {
-        self.slab.split_to(size).freeze()
-    }
-
-    #[inline]
-    fn take(&mut self) -> Bytes {
-        self.slab.split().freeze()
+    fn take_buf(&mut self) -> Option<Bytes> {
+        if self.slab.is_empty() {
+            None
+        } else {
+            Some(self.slab.split().freeze())
+        }
     }
 }
 
@@ -131,25 +124,44 @@ where
     let mut slab = WriteBufSlab::new();
     tokio::spawn(async move {
         debug!("channel[{}]: start to send message to server {};", ch_id, target);
-        while let Some(mut next) = output.recv().await {
+        let mut error_occurred = false;
+        'main: while let Some(mut next) = output.recv().await {
             if let Some(msg) = next.take() {
-                if let Err(err) = slab.write(msg) {
-                    error!("channel[{}]: fail to encode message: {};", ch_id, err);
-                }
-
-                while slab.len() > MAX_BUF_SIZE {
-                    if let Err(err) = send_flush(slab.take_buf(MAX_BUF_SIZE), &mut writer).await {
-                        error!("channel[{}]: fail to send & flush : {};", ch_id, err);
-                        break;
+                slab.write(msg);
+                'sub: loop {
+                    match output.try_recv() {
+                        Ok(Some(msg)) => {
+                            slab.write(msg);
+                        },
+                        Ok(None) => {
+                            if let Err(err) = send_flush(&mut slab, &mut writer).await {
+                                error_occurred = true;
+                                error!("channel[{}]: fail to send or flush: {};", ch_id, err);
+                                break 'main;
+                            }
+                        },
+                        Err(TryRecvError::Empty) => {
+                            break 'sub;
+                        },
+                        Err(TryRecvError::Disconnected) => {
+                            break 'main;
+                        }
                     }
                 }
-            } else {
-                if let Err(err) = send_flush(slab.take(), &mut writer).await {
-                    error!("channel[{}]: fail to send & flush : {};", ch_id, err);
-                    break;
-                }
+            }
+            if let Err(err) = send_flush(&mut slab, &mut writer).await {
+                error_occurred = true;
+                error!("channel[{}]: fail to send or flush: {};", ch_id, err);
+                break ;
             }
         }
+
+        if !error_occurred && slab.len() > 0 {
+            if let Err(err) = send_flush(&mut slab, &mut writer).await {
+                error!("channel[{}]: fail to send or flush: {};", ch_id, err);
+            }
+        }
+
         debug!("channel[{}] :finish send message to server {};", ch_id, target);
         if let Err(err) = writer.shutdown().await {
             error!("channel[{}]: fail to shutdown: {};", ch_id, err);
@@ -158,12 +170,14 @@ where
 }
 
 #[inline]
-async fn send_flush<W>(mut buf: Bytes, writer: &mut W) -> std::io::Result<()>
+async fn send_flush<W>(slab: &mut WriteBufSlab, writer: &mut W) -> std::io::Result<()>
 where
     W: AsyncWrite + Send + Unpin + 'static,
 {
-    writer.write_all_buf(&mut buf).await?;
-    writer.flush().await?;
+    if let Some(mut buf) = slab.take_buf() {
+        writer.write_all_buf(&mut buf).await?;
+        writer.flush().await?;
+    }
     Ok(())
 }
 

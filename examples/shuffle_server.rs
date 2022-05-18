@@ -45,12 +45,11 @@ impl TestMessage {
 }
 
 impl Encode for TestMessage {
-    fn write_to<W: BufMut>(&self, writer: &mut W) -> std::io::Result<()> {
+    fn write_to<W: BufMut>(&self, writer: &mut W) {
         writer.put_u32(self.user_id);
         writer.put_u128(self.create_time);
         writer.put_u32(self.content.len() as u32);
         writer.put_slice(self.content.as_slice());
-        Ok(())
     }
 }
 
@@ -88,7 +87,7 @@ async fn main() {
     server.start().await.unwrap();
     std::thread::sleep(Duration::from_secs(5));
     println!("try to get connections to {:? }...", peers);
-    let (push, mut pull) = server.get_connections(1, &peers).await.unwrap();
+    let (push, mut pull) = server.get_bi_channel(1, &peers).await.unwrap();
 
     println!("connected;");
     let recv_fut = tokio::spawn(async move {
