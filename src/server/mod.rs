@@ -11,7 +11,7 @@ use crate::connection::quic::QUIConnBuilder;
 use crate::connection::tcp::TcpConnBuilder;
 use crate::connection::ConnectionBuilder;
 use crate::name_service::NameService;
-use crate::{ChannelId, Message, RemoteReceiver, RemoteSender, ServerId, VError};
+use crate::{ChannelId, Message, ServerId, VError, VReceiver, VSender};
 
 pub struct ValleyServer<N, B> {
     server_id: ServerId,
@@ -48,7 +48,7 @@ where
 
     pub async fn get_bi_channel<T: Encode + Send + 'static>(
         &self, ch_id: ChannelId, servers: &[ServerId],
-    ) -> Result<(RemoteSender<T>, RemoteReceiver), VError> {
+    ) -> Result<(VSender<T>, VReceiver), VError> {
         let mut addrs = Vec::with_capacity(servers.len());
 
         for server_id in servers {
@@ -77,7 +77,7 @@ where
             start_recv(ch_id, *server_id, tx.clone(), conn);
         }
 
-        Ok((RemoteSender::new(self.server_id, sends), RemoteReceiver::new(self.server_id, rx)))
+        Ok((VSender::new(self.server_id, sends), VReceiver::new(self.server_id, rx)))
     }
 }
 
@@ -260,3 +260,5 @@ where
         debug!("channel[{}]: finish read all and exit, total read {} messages;", ch_id, cnt);
     });
 }
+
+pub mod tcp_mp;

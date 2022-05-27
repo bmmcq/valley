@@ -30,12 +30,12 @@ impl Message {
     }
 }
 
-pub struct RemoteSender<T> {
+pub struct VSender<T> {
     server_id: ServerId,
     sends: HashMap<ServerId, Sender<Option<T>>>,
 }
 
-impl<T> RemoteSender<T> {
+impl<T> VSender<T> {
     pub fn new(server_id: ServerId, sends: HashMap<ServerId, Sender<Option<T>>>) -> Self {
         Self { server_id, sends }
     }
@@ -60,7 +60,7 @@ impl<T> RemoteSender<T> {
     }
 }
 
-impl<T> Clone for RemoteSender<T> {
+impl<T> Clone for VSender<T> {
     fn clone(&self) -> Self {
         let mut sends_copy = HashMap::with_capacity(self.sends.len());
         for (k, v) in self.sends.iter() {
@@ -70,12 +70,12 @@ impl<T> Clone for RemoteSender<T> {
     }
 }
 
-pub struct RemoteReceiver {
+pub struct VReceiver {
     server_id: ServerId,
     receiver: Receiver<Message>,
 }
 
-impl RemoteReceiver {
+impl VReceiver {
     pub fn new(server_id: ServerId, receiver: Receiver<Message>) -> Self {
         Self { server_id, receiver }
     }
@@ -90,7 +90,7 @@ impl RemoteReceiver {
 }
 
 /// Create a communication channel, with which we can send data to remote servers, and receive data from them;
-pub async fn allocate<T>(_ch_id: ChannelId, _servers: &[ServerId]) -> Result<(RemoteSender<T>, RemoteReceiver), VError> {
+pub async fn allocate<T>(_ch_id: ChannelId, _servers: &[ServerId]) -> Result<(VSender<T>, VReceiver), VError> {
     todo!()
 }
 
