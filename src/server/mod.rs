@@ -137,6 +137,7 @@ where
                     match output.try_recv() {
                         Ok(Some(msg)) => {
                             slab.write(msg);
+                            // todo: auto flush to avoid large buffer incurred by busy writes;
                         }
                         Ok(None) => {
                             if let Err(err) = send_flush(&mut slab, &mut writer).await {
