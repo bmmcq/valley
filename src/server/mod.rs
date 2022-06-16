@@ -43,10 +43,24 @@ where
         let bind_addr = self.conn_builder.bind(self.addr).await?;
         self.name_service.register(self.server_id, bind_addr).await?;
         info!("server {} started at {} ;", self.server_id, bind_addr);
+        self.addr = bind_addr;
         Ok(())
     }
 
-    pub async fn get_bi_channel<T: Encode + Send + 'static>(
+    pub fn get_server_id(&self) -> ServerId {
+        self.server_id
+    }
+
+    pub fn get_address(&self) -> SocketAddr {
+        self.addr
+    }
+
+    /// Allocate a channel for bidirectional symmetric communication;
+    /// The 'Symmetric' means it's not a client/server architecture(asymmetrical), instead, each role
+    /// in the communication network acts like a server;
+    /// Each server will send messages to other servers without waiting for responses, and will receive
+    /// messages from other servers without sending responses;
+    pub async fn alloc_bi_symmetry_channel<T: Encode + Send + 'static>(
         &self, ch_id: ChannelId, servers: &[ServerId],
     ) -> Result<(VSender<T>, VReceiver), VError> {
         let mut addrs = Vec::with_capacity(servers.len());

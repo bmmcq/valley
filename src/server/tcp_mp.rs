@@ -73,7 +73,10 @@ where
         let mut delivery_tasks = vec![];
 
         for i in 0..self.tcp_connections {
-            let (tx, rx) = self.server.get_bi_channel(i as ChannelId, &peers).await?;
+            let (tx, rx) = self
+                .server
+                .alloc_bi_symmetry_channel(i as ChannelId, &peers)
+                .await?;
             self.send_pool.push(tx);
             let (ttx, rtx) = tokio::sync::mpsc::unbounded_channel();
             self.tx_register.push(ttx);

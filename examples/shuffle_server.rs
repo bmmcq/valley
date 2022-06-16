@@ -2,12 +2,12 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 
 use bytes::{Buf, BufMut};
 use structopt::StructOpt;
 use valley::codec::{Decode, Encode};
-use valley::name_service::{NameService, StaticNameService};
+use valley::name_service::StaticNameService;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "ShuffleServer")]
@@ -69,25 +69,26 @@ async fn main() {
     env_logger::init();
     let configs: Configs = Configs::from_args();
     let hosts = BufReader::new(File::open(&configs.host_file).unwrap());
-    let ns = StaticNameService::new();
     let mut peers = vec![];
     let mut port = 0u16;
+    let mut server_hosts = Vec::new();
     for (i, host) in hosts.lines().enumerate() {
         let host_addr = host.unwrap().parse::<SocketAddr>().unwrap();
+        server_hosts.push((i as u32, host_addr));
         if i as u32 != configs.server_id {
             peers.push(i as u32);
         } else {
             port = host_addr.port();
         }
-        ns.register(i as u32, host_addr).await.unwrap();
     }
+
+    let ns = StaticNameService::new(server_hosts);
     let addr = SocketAddr::new("0.0.0.0".parse().unwrap(), port);
 
     let mut server = valley::server::new_tcp_server(configs.server_id, addr, ns);
     server.start().await.unwrap();
-    std::thread::sleep(Duration::from_secs(5));
     println!("try to get connections to {:? }...", peers);
-    let (push, mut pull) = server.get_bi_channel(1, &peers).await.unwrap();
+    let (push, mut pull) = server.alloc_bi_symmetry_channel(1, &peers).await.unwrap();
 
     println!("connected;");
     let recv_fut = tokio::spawn(async move {

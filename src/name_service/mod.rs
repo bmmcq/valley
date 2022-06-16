@@ -3,6 +3,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 
 use crate::{ServerId, VError};
@@ -15,20 +16,37 @@ pub trait NameService {
 }
 
 pub struct StaticNameService {
+    hosts: Vec<(ServerId, SocketAddr)>,
     naming_map: Arc<RwLock<HashMap<ServerId, SocketAddr>>>,
 }
 
 impl StaticNameService {
-    pub fn new() -> Self {
-        Self { naming_map: Arc::new(RwLock::new(HashMap::new())) }
+    pub fn new(hosts: Vec<(ServerId, SocketAddr)>) -> Self {
+        Self { hosts, naming_map: Arc::new(RwLock::new(HashMap::new())) }
     }
 }
 
 #[async_trait]
 impl NameService for StaticNameService {
     async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), VError> {
-        let mut write_lock = self.naming_map.write().await;
-        write_lock.insert(server_id, addr);
+        let mut w_lock = self.naming_map.write().await;
+        w_lock.insert(server_id, addr);
+        while w_lock.len() < self.hosts.len() {
+            for (id, addr) in self.hosts.iter() {
+                if *id != server_id && !w_lock.contains_key(id) {
+                    match TcpStream::connect(*addr).await {
+                        Ok(_) => {
+                            info!("server_{}({}) is started...", id, addr);
+                            w_lock.insert(*id, *addr);
+                        }
+                        Err(e) => {
+                            warn!("try to connect server {}({}) fail: {};", id, addr, e);
+                        }
+                    }
+                }
+            }
+        }
+
         Ok(())
     }
 

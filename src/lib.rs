@@ -236,11 +236,6 @@ impl From<VReceiver> for VReceiverStream {
     }
 }
 
-/// Create a communication channel, with which we can send data to remote servers, and receive data from them;
-pub async fn allocate<T>(_ch_id: ChannelId, _servers: &[ServerId]) -> Result<(VSender<T>, VReceiver), VError> {
-    todo!()
-}
-
 pub mod codec;
 pub mod connection;
 pub mod errors;
