@@ -8,7 +8,9 @@ use crate::codec::{Decode, Encode};
 use crate::connection::tcp::TcpConnBuilder;
 use crate::name_service::NameService;
 use crate::server::ValleyServer;
-use crate::{ChannelId, ServerId, VError, VReceiver, VSender};
+use crate::{ChannelId, ServerId, VError};
+use crate::receive::VReceiver;
+use crate::send::bound::VSender;
 
 struct MPacket<T> {
     ch_id: ChannelId,
@@ -75,7 +77,7 @@ where
         for i in 0..self.tcp_connections {
             let (tx, rx) = self
                 .server
-                .alloc_bi_symmetry_channel(i as ChannelId, &peers)
+                .alloc_symmetry_channel(i as ChannelId, &peers)
                 .await?;
             self.send_pool.push(tx);
             let (ttx, rtx) = tokio::sync::mpsc::unbounded_channel();

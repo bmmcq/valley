@@ -88,7 +88,7 @@ async fn main() {
     let mut server = valley::server::new_tcp_server(configs.server_id, addr, ns);
     server.start().await.unwrap();
     println!("try to get connections to {:? }...", peers);
-    let (push, mut pull) = server.alloc_bi_symmetry_channel(1, &peers).await.unwrap();
+    let (push, mut pull) = server.alloc_symmetry_channel(1, &peers).await.unwrap();
 
     println!("connected;");
     let recv_fut = tokio::spawn(async move {

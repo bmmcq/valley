@@ -4,14 +4,17 @@ use std::net::SocketAddr;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::error::TryRecvError;
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::{Sender};
 
 use crate::codec::Encode;
 use crate::connection::quic::QUIConnBuilder;
 use crate::connection::tcp::TcpConnBuilder;
 use crate::connection::ConnectionBuilder;
 use crate::name_service::NameService;
-use crate::{ChannelId, Message, ServerId, VError, VReceiver, VSender};
+use crate::{ChannelId, Message, ServerId, VError};
+use crate::receive::{EnumReceiver, VReceiver};
+use crate::send::bound::VSender;
+use crate::send::unbound::VUnboundSender;
 
 pub struct ValleyServer<N, B> {
     server_id: ServerId,
@@ -60,7 +63,7 @@ where
     /// in the communication network acts like a server;
     /// Each server will send messages to other servers without waiting for responses, and will receive
     /// messages from other servers without sending responses;
-    pub async fn alloc_bi_symmetry_channel<T: Encode + Send + 'static>(
+    pub async fn alloc_symmetry_channel<T: Encode + Send + 'static>(
         &self, ch_id: ChannelId, servers: &[ServerId],
     ) -> Result<(VSender<T>, VReceiver), VError> {
         let mut addrs = Vec::with_capacity(servers.len());
@@ -81,7 +84,7 @@ where
                 .get_writer_to(ch_id, self.server_id, addr)
                 .await?;
             let (tx, rx) = tokio::sync::mpsc::channel(1024);
-            start_send(ch_id, server_id, rx, conn);
+            start_send(ch_id, server_id, EnumReceiver::Bound(rx), conn);
             sends.insert(server_id, tx);
         }
 
@@ -92,6 +95,40 @@ where
         }
 
         Ok((VSender::new(self.server_id, sends), VReceiver::new(self.server_id, rx)))
+    }
+
+    pub async fn alloc_symmetry_channel_unbound_send<T: Encode + Send + 'static>(
+        &self, ch_id: ChannelId, servers: &[ServerId],
+    ) -> Result<(VUnboundSender<T>, VReceiver), VError> {
+        let mut addrs = Vec::with_capacity(servers.len());
+
+        for server_id in servers {
+            if let Some(addr) = self.name_service.get_registered(*server_id).await? {
+                addrs.push((*server_id, addr));
+            } else {
+                return Err(VError::ServerNotFound(*server_id));
+            }
+        }
+
+        let mut sends = HashMap::with_capacity(servers.len());
+        for (server_id, addr) in addrs {
+            debug!("channel[{}]: try to connect server {} at  {} ...", ch_id, server_id, addr);
+            let conn = self
+                .conn_builder
+                .get_writer_to(ch_id, self.server_id, addr)
+                .await?;
+            let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+            start_send(ch_id, server_id, EnumReceiver::Unbound(rx), conn);
+            sends.insert(server_id, tx);
+        }
+
+        let (tx, rx) = tokio::sync::mpsc::channel(1024 * servers.len());
+        for server_id in servers {
+            let conn = self.conn_builder.get_reader_from(ch_id, *server_id).await?;
+            start_recv(ch_id, *server_id, tx.clone(), conn);
+        }
+
+        Ok((VUnboundSender::new(self.server_id, sends), VReceiver::new(self.server_id, rx)))
     }
 }
 
@@ -109,6 +146,7 @@ impl WriteBufSlab {
         let start_offset = self.slab.len();
         self.slab.put_u64(0);
         entry.write_to(&mut self.slab);
+
         let end_offset = self.slab.len();
         let payload_len = end_offset - start_offset - 8;
         if payload_len > 0 {
@@ -135,7 +173,7 @@ impl WriteBufSlab {
     }
 }
 
-fn start_send<T, W>(ch_id: ChannelId, target: ServerId, mut output: Receiver<Option<T>>, mut writer: W)
+fn start_send<T, W>(ch_id: ChannelId, target: ServerId, mut output: EnumReceiver<Option<T>>, mut writer: W)
 where
     T: Encode + Send + 'static,
     W: AsyncWrite + Send + Unpin + 'static,
