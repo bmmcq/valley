@@ -1,7 +1,6 @@
 #[macro_use]
 extern crate log;
 
-
 use bytes::Bytes;
 
 use crate::errors::VError;
@@ -35,7 +34,7 @@ impl Message {
         &mut self.payload
     }
 
-    pub fn  take_payload(self) -> Bytes {
+    pub fn take_payload(self) -> Bytes {
         self.payload
     }
 }
@@ -46,8 +45,8 @@ impl AsRef<[u8]> for Message {
     }
 }
 
-pub mod send;
 pub mod receive;
+pub mod send;
 
 pub mod codec;
 pub mod connection;

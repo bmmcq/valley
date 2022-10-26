@@ -7,18 +7,19 @@ use bytes::{Buf, BufMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite};
 use tokio::sync::{oneshot, Mutex};
 
-use crate::{ChannelId, ServerId, VError};
+use crate::errors::{ConnectError, ServerError};
+use crate::{ChannelId, ServerId};
 
 #[async_trait]
 pub trait ConnectionBuilder {
     type Reader: AsyncRead + Send + Unpin + 'static;
     type Writer: AsyncWrite + Send + Unpin + 'static;
 
-    async fn bind(&mut self, addr: SocketAddr) -> Result<SocketAddr, VError>;
+    async fn bind(&mut self, addr: SocketAddr) -> Result<SocketAddr, ServerError>;
 
-    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, VError>;
+    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, ConnectError>;
 
-    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, VError>;
+    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, ConnectError>;
 }
 
 enum MaybeFuture<T> {
@@ -35,42 +36,39 @@ impl<T> WaitingAccepted<T> {
         WaitingAccepted { waiting: Arc::new(Mutex::new(HashMap::new())) }
     }
 
-    async fn get_or_wait(&self, ch_id: ChannelId, server_id: ServerId) -> Result<T, VError> {
+    async fn get_or_wait(&self, ch_id: ChannelId, server_id: ServerId) -> T {
         let mut waiting = self.waiting.lock().await;
         if let Some(ac) = waiting.remove(&(server_id, ch_id)) {
             match ac {
-                MaybeFuture::Ready(a) => Ok(a),
+                MaybeFuture::Ready(a) => a,
                 MaybeFuture::Waiting(_) => {
-                    panic!("some other waiting on it;")
+                    panic!("conflict channel id = {}", ch_id);
                 }
             }
         } else {
             let (tx, rx) = oneshot::channel();
             waiting.insert((server_id, ch_id), MaybeFuture::Waiting(tx));
             debug!("wait connection of channel[{}] from {} ...;", ch_id, server_id);
-            std::mem::drop(waiting);
-            Ok(rx.await.unwrap())
+            drop(waiting);
+            rx.await.expect("wait connection fail;")
         }
     }
 
-    async fn notify(&self, ch_id: ChannelId, server_id: ServerId, res: T) -> Result<(), VError> {
+    async fn notify(&self, ch_id: ChannelId, server_id: ServerId, res: T) {
         let mut waiting = self.waiting.lock().await;
         if let Some(ac) = waiting.remove(&(server_id, ch_id)) {
             match ac {
                 MaybeFuture::Ready(_) => {
-                    panic!("no waiting...")
+                    panic!("unknown connection of channel {}", ch_id);
                 }
                 MaybeFuture::Waiting(notify) => {
                     debug!("notify waiting connection of channel[{}] from server {};", ch_id, server_id);
-                    notify
-                        .send(res)
-                        .map_err(|_| VError::SendError("notify fail".to_owned()))?;
+                    notify.send(res).ok();
                 }
             }
         } else {
             waiting.insert((server_id, ch_id), MaybeFuture::Ready(res));
         }
-        Ok(())
     }
 }
 
@@ -94,9 +92,7 @@ where
                 let server_id = read.get_u32();
                 let ch_id = read.get_u32();
                 debug!("get connection of channel[{}] from server {} ;", ch_id, server_id);
-                if let Err(e) = accepted.notify(ch_id, server_id, conn).await {
-                    error!("notify connection of channel {} from server {} fail: {};", ch_id, server_id, e);
-                }
+                accepted.notify(ch_id, server_id, conn).await;
             }
             Err(e) => {
                 error!("read connection info fail: {}", e)

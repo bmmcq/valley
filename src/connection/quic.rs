@@ -11,7 +11,8 @@ use rustls::{Certificate, Error, ServerName};
 use tokio::sync::RwLock;
 
 use crate::connection::{add_connection, get_head, ConnectionBuilder, WaitingAccepted};
-use crate::{ChannelId, ServerId, VError};
+use crate::errors::{ConnectError, ServerError};
+use crate::{ChannelId, ServerId};
 
 const SERVER_NAME: &'static str = "valley";
 
@@ -33,7 +34,7 @@ impl ConnectionBuilder for QUIConnBuilder {
     type Reader = RecvStream;
     type Writer = SendStream;
 
-    async fn bind(&mut self, addr: SocketAddr) -> Result<SocketAddr, VError> {
+    async fn bind(&mut self, addr: SocketAddr) -> Result<SocketAddr, ServerError> {
         let server_config = config_server();
         let (endpoint, mut incoming) = Endpoint::server(server_config, addr)?;
         let bind_addr = endpoint.local_addr()?;
@@ -55,7 +56,7 @@ impl ConnectionBuilder for QUIConnBuilder {
         Ok(bind_addr)
     }
 
-    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, VError> {
+    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, ConnectError> {
         {
             let read_lock = self.connected.read().await;
             if let Some(conn) = read_lock.get(&target) {
@@ -73,8 +74,8 @@ impl ConnectionBuilder for QUIConnBuilder {
         result
     }
 
-    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, VError> {
-        let conn = self.accepted_recv.get_or_wait(ch_id, source).await?;
+    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, ConnectError> {
+        let conn = self.accepted_recv.get_or_wait(ch_id, source).await;
         Ok(conn)
     }
 }
@@ -97,7 +98,7 @@ fn handle_new_connection(mut conn: NewConnection, accepted_recv: &WaitingAccepte
     });
 }
 
-async fn open_uni(ch_id: ChannelId, server_id: ServerId, conn: &NewConnection) -> Result<SendStream, VError> {
+async fn open_uni(ch_id: ChannelId, server_id: ServerId, conn: &NewConnection) -> Result<SendStream, ConnectError> {
     match conn.connection.open_uni().await {
         Ok(mut stream) => {
             let head = get_head(ch_id, server_id);

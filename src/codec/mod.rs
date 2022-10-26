@@ -1,4 +1,4 @@
-use bytes::{Buf, BufMut};
+pub use bytes::{Buf, BufMut};
 
 pub trait Encode {
     fn write_to<W: BufMut>(&self, writer: &mut W);

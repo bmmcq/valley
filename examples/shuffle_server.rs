@@ -94,7 +94,7 @@ async fn main() {
     let recv_fut = tokio::spawn(async move {
         let mut i = 0;
         while let Some(mut next) = pull.recv().await {
-            let msg = TestMessage::read_from(next.get_payload()).unwrap();
+            let msg = TestMessage::read_from(next.get_payload_mut()).unwrap();
             println!(
                 "{}. get message from user {} at server {}, use {} micros;",
                 i,

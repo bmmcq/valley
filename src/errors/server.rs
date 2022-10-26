@@ -1,15 +1,17 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ServerStartError {
+pub enum ServerError {
+    #[error("current server not started;")]
+    NotStart,
     #[error("server start failed because of : {source}")]
-    SystemIO {
+    StartError {
         #[from]
-        source: std::io::Error
+        source: std::io::Error,
     },
     #[error("server register failed because of : {source}")]
-    ServerRegister {
+    RegisterError {
         #[from]
-        source: anyhow::Error
-    }
+        source: anyhow::Error,
+    },
 }

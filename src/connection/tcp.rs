@@ -5,7 +5,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::connection::{add_connection, get_head, ConnectionBuilder, WaitingAccepted};
-use crate::{ChannelId, ServerId, VError};
+use crate::errors::{ConnectError, ServerError};
+use crate::{ChannelId, ServerId};
 
 pub struct TcpConnBuilder {
     server_id: ServerId,
@@ -23,7 +24,7 @@ impl ConnectionBuilder for TcpConnBuilder {
     type Reader = TcpStream;
     type Writer = TcpStream;
 
-    async fn bind(&mut self, addr: SocketAddr) -> Result<SocketAddr, VError> {
+    async fn bind(&mut self, addr: SocketAddr) -> Result<SocketAddr, ServerError> {
         let listener = TcpListener::bind(addr).await?;
         let bind_addr = listener.local_addr()?;
         let incoming = self.incoming.clone();
@@ -45,7 +46,7 @@ impl ConnectionBuilder for TcpConnBuilder {
         Ok(bind_addr)
     }
 
-    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, VError> {
+    async fn get_writer_to(&self, ch_id: ChannelId, target: ServerId, addr: SocketAddr) -> Result<Self::Writer, ConnectError> {
         let mut conn = TcpStream::connect(addr).await?;
         debug!("channel[{}]: create a TCP connection from server {} to {}({});", ch_id, self.server_id, target, addr);
         let head = get_head(ch_id, self.server_id);
@@ -53,8 +54,8 @@ impl ConnectionBuilder for TcpConnBuilder {
         Ok(conn)
     }
 
-    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, VError> {
-        let conn = self.incoming.get_or_wait(ch_id, source).await?;
+    async fn get_reader_from(&self, ch_id: ChannelId, source: ServerId) -> Result<Self::Reader, ConnectError> {
+        let conn = self.incoming.get_or_wait(ch_id, source).await;
         Ok(conn)
     }
 }

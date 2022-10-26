@@ -4,17 +4,18 @@ use std::net::SocketAddr;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc::error::TryRecvError;
-use tokio::sync::mpsc::{Sender};
+use tokio::sync::mpsc::Sender;
 
 use crate::codec::Encode;
 use crate::connection::quic::QUIConnBuilder;
 use crate::connection::tcp::TcpConnBuilder;
 use crate::connection::ConnectionBuilder;
+use crate::errors::{ConnectError, ServerError};
 use crate::name_service::NameService;
-use crate::{ChannelId, Message, ServerId, VError};
 use crate::receive::{EnumReceiver, VReceiver};
 use crate::send::bound::VSender;
 use crate::send::unbound::VUnboundSender;
+use crate::{ChannelId, Message, ServerId, VError};
 
 pub struct ValleyServer<N, B> {
     server_id: ServerId,
@@ -42,7 +43,7 @@ where
     N: NameService,
     B: ConnectionBuilder,
 {
-    pub async fn start(&mut self) -> Result<(), VError> {
+    pub async fn start(&mut self) -> Result<(), ServerError> {
         let bind_addr = self.conn_builder.bind(self.addr).await?;
         self.name_service.register(self.server_id, bind_addr).await?;
         info!("server {} started at {} ;", self.server_id, bind_addr);
@@ -69,10 +70,16 @@ where
         let mut addrs = Vec::with_capacity(servers.len());
 
         for server_id in servers {
-            if let Some(addr) = self.name_service.get_registered(*server_id).await? {
-                addrs.push((*server_id, addr));
-            } else {
-                return Err(VError::ServerNotFound(*server_id));
+            match self.name_service.get_registered(*server_id).await {
+                Ok(Some(addr)) => {
+                    addrs.push((*server_id, addr));
+                }
+                Ok(None) => {
+                    return Err(ConnectError::ServerNotFound(*server_id))?;
+                }
+                Err(source) => {
+                    return Err(ConnectError::FetchServerAddr { server_id: *server_id, source })?;
+                }
             }
         }
 
@@ -103,10 +110,16 @@ where
         let mut addrs = Vec::with_capacity(servers.len());
 
         for server_id in servers {
-            if let Some(addr) = self.name_service.get_registered(*server_id).await? {
-                addrs.push((*server_id, addr));
-            } else {
-                return Err(VError::ServerNotFound(*server_id));
+            match self.name_service.get_registered(*server_id).await {
+                Ok(Some(addr)) => {
+                    addrs.push((*server_id, addr));
+                }
+                Ok(None) => {
+                    return Err(ConnectError::ServerNotFound(*server_id))?;
+                }
+                Err(source) => {
+                    return Err(ConnectError::FetchServerAddr { server_id: *server_id, source })?;
+                }
             }
         }
 
@@ -313,5 +326,3 @@ where
         debug!("channel[{}]: finish read all and exit, total read {} messages;", ch_id, cnt);
     });
 }
-
-pub mod tcp_mp;

@@ -1,10 +1,12 @@
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
 use futures::Stream;
-use tokio::sync::mpsc::{Receiver, UnboundedReceiver};
 use tokio::sync::mpsc::error::TryRecvError;
+use tokio::sync::mpsc::{Receiver, UnboundedReceiver};
 use tokio_stream::wrappers::ReceiverStream;
+
 use crate::{Message, ServerId};
 
 pub struct VReceiver {
@@ -78,29 +80,21 @@ impl From<VReceiver> for VReceiverStream {
 
 pub enum EnumReceiver<T> {
     Bound(Receiver<T>),
-    Unbound(UnboundedReceiver<T>)
+    Unbound(UnboundedReceiver<T>),
 }
 
-impl <T> EnumReceiver<T> {
+impl<T> EnumReceiver<T> {
     pub async fn recv(&mut self) -> Option<T> {
         match self {
-            EnumReceiver::Bound(s) => {
-                s.recv().await
-            }
-            EnumReceiver::Unbound(s) => {
-                s.recv().await
-            }
+            EnumReceiver::Bound(s) => s.recv().await,
+            EnumReceiver::Unbound(s) => s.recv().await,
         }
     }
 
-    pub fn  try_recv(&mut self) -> Result<T,  TryRecvError> {
+    pub fn try_recv(&mut self) -> Result<T, TryRecvError> {
         match self {
-            EnumReceiver::Bound(s) => {
-                s.try_recv()
-            }
-            EnumReceiver::Unbound(s) => {
-                s.try_recv()
-            }
+            EnumReceiver::Bound(s) => s.try_recv(),
+            EnumReceiver::Unbound(s) => s.try_recv(),
         }
     }
 }

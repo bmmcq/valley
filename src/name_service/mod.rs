@@ -6,13 +6,13 @@ use async_trait::async_trait;
 use tokio::net::TcpStream;
 use tokio::sync::RwLock;
 
-use crate::{ServerId, VError};
+use crate::ServerId;
 
 #[async_trait]
 pub trait NameService {
-    async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), VError>;
+    async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), anyhow::Error>;
 
-    async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, VError>;
+    async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, anyhow::Error>;
 }
 
 pub struct StaticNameService {
@@ -28,7 +28,7 @@ impl StaticNameService {
 
 #[async_trait]
 impl NameService for StaticNameService {
-    async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), VError> {
+    async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), anyhow::Error> {
         let mut w_lock = self.naming_map.write().await;
         w_lock.insert(server_id, addr);
         while w_lock.len() < self.hosts.len() {
@@ -50,7 +50,7 @@ impl NameService for StaticNameService {
         Ok(())
     }
 
-    async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, VError> {
+    async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, anyhow::Error> {
         let read_lock = self.naming_map.read().await;
         Ok(read_lock.get(&server_id).map(|addr| *addr))
     }
